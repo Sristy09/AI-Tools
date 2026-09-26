@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Try the Predictor{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Section 08</div>
+  <h1>Try the Predictor</h1>
+  <p>Describe a hypothetical respondent and the trained {{ model_name }} model (cross-validated macro-F1: {{ cv_f1 }}) will predict which AI tool they'd most likely prefer.</p>
+</div>
+
+<div class="predict-layout">
+  <div class="panel">
+    <div class="panel-head"><h3>Respondent profile</h3></div>
+    <form id="predict-form">
+      <div class="form-field">
+        <label for="age_group">Age group</label>
+        <select id="age_group" name="age_group_code">
+          <option value="1">13 – 17</option>
+          <option value="2" selected>18 – 24</option>
+          <option value="3">25 – 34</option>
+          <option value="4">35 – 44</option>
+          <option value="5">45 and above</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender">
+          <option value="Female">Female</option>
+          <option value="Male">Male</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="occupation">Occupation</label>
+        <select id="occupation" name="occupation">
+          {% for occ in occupations %}
+          <option value="{{ occ }}" {{ 'selected' if occ == 'Student' else '' }}>{{ occ }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="residence">Residence type</label>
+        <select id="residence" name="residence_type">
+          {% for r in residence_types %}
+          <option value="{{ r }}" {{ 'selected' if r == 'Urban' else '' }}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="frequency">Usage frequency</label>
+        <select id="frequency" name="usage_frequency_code">
+          <option value="1">Once a month</option>
+          <option value="2">Several times a month</option>
+          <option value="3">Once a week</option>
+          <option value="4">Several times a week</option>
+          <option value="5" selected>Once a day</option>
+          <option value="6">Several times a day</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="satisfaction">Satisfaction with current tool</label>
+        <select id="satisfaction" name="satisfaction_code">
+          <option value="1">Very dissatisfied</option>
+          <option value="2">Dissatisfied</option>
+          <option value="3">Neutral</option>
+          <option value="4" selected>Satisfied</option>
+          <option value="5">Very satisfied</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="tools_known">Number of AI tools known <output id="out-tools">3</output></label>
+        <input type="range" id="tools_known" name="num_tools_known" min="1" max="9" value="3">
+      </div>
+
+      <div class="form-field">
+        <label for="purposes">Number of usage purposes <output id="out-purposes">4</output></label>
+        <input type="range" id="purposes" name="num_usage_purposes" min="1" max="9" value="4">
+      </div>
+
+      <div class="form-field">
+        <label for="contexts">Number of usage contexts <output id="out-contexts">2</output></label>
+        <input type="range" id="contexts" name="num_usage_contexts" min="1" max="6" value="2">
+      </div>
+
+      <div class="form-field">
+        <label for="concerns">Number of concerns <output id="out-concerns">2</output></label>
+        <input type="range" id="concerns" name="num_concerns" min="1" max="7" value="2">
+      </div>
+
+      <button type="submit" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2 3 14h7l-1 8 11-14h-8l1-6z" fill="currentColor"/></svg>
+        Predict most-used tool
+      </button>
+    </form>
+  </div>
+
+  <div class="result-card" id="result-card">
+    <div class="result-empty">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Fill in the profile and predict to see the model's answer here.
+    </div>
+  </div>
+</div>
+
+<div class="footnote">This model was trained on 186 labeled survey responses across 3 tool classes (ChatGPT, Claude, Gemini). Predictions reflect patterns in a modest sample — treat them as illustrative, not authoritative.</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('input[type="range"]').forEach(input => {
+  const outputId = 'out-' + input.id.split('_')[0];
+  const out = document.getElementById(outputId) || document.getElementById('out-' + input.id);
+  input.addEventListener('input', () => { if (out) out.textContent = input.value; });
+});
+// wire outputs explicitly (ids don't all match the pattern above)
+const map = { tools_known: 'out-tools', purposes: 'out-purposes', contexts: 'out-contexts', concerns: 'out-concerns' };
+Object.entries(map).forEach(([inputId, outId]) => {
+  const el = document.getElementById(inputId);
+  const out = document.getElementById(outId);
+  el.addEventListener('input', () => out.textContent = el.value);
+});
+
+const toolColors = { ChatGPT: '#3F7D58', Claude: cssVar('--accent-ai'), Gemini: cssVar('--accent-human') };
+
+document.getElementById('predict-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const payload = Object.fromEntries(new FormData(form).entries());
+
+  const btn = form.querySelector('button');
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Predicting…';
+
+  try {
+    const res = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    renderResult(data);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+});
+
+function renderResult(data) {
+  const card = document.getElementById('result-card');
+  const color = toolColors[data.prediction] || cssVar('--accent-ai');
+
+  const rows = data.probabilities.map(p => `
+    <div class="prob-row">
+      <div class="prob-label">${p.tool}</div>
+      <div class="prob-track"><div class="prob-fill" style="width:0%; background:${toolColors[p.tool] || cssVar('--accent-ai')};" data-target="${p.probability * 100}"></div></div>
+      <div class="prob-value">${(p.probability * 100).toFixed(0)}%</div>
+    </div>
+  `).join('');
+
+  card.innerHTML = `
+    <div class="eyebrow">Predicted most-used tool</div>
+    <div class="result-headline">The model predicts <span class="tool-name" style="color:${color};">${data.prediction}</span></div>
+    <p style="margin-top:0.5rem;">Based on the ${data.model_used} model trained on this survey's respondents.</p>
+    <div style="margin-top:1.4rem;">${rows}</div>
+  `;
+
+  requestAnimationFrame(() => {
+    card.querySelectorAll('.prob-fill').forEach(el => { el.style.width = el.dataset.target + '%'; });
+  });
+}
+</script>
+{% endblock %}

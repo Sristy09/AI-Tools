@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Internship research project · Gandaki University</div>
+  <h1>Analysis &amp; Prediction of AI Tool Preferences</h1>
+  <p>How usage patterns, purpose, and demographics shape which AI tool people reach for — and whether that choice can be predicted. Explore the survey data, the statistical tests behind it, and try the trained model yourself.</p>
+</div>
+
+<div class="stat-strip" id="stat-strip">
+  <div class="stat-cell"><div class="value skeleton" style="width:3.5rem;height:1.9rem;">&nbsp;</div><div class="label">Respondents</div></div>
+  <div class="stat-cell"><div class="value skeleton" style="width:3.5rem;height:1.9rem;">&nbsp;</div><div class="label">Use AI tools</div></div>
+  <div class="stat-cell"><div class="value skeleton" style="width:3.5rem;height:1.9rem;">&nbsp;</div><div class="label">Most preferred</div></div>
+  <div class="stat-cell"><div class="value skeleton" style="width:3.5rem;height:1.9rem;">&nbsp;</div><div class="label">Best model (CV macro-F1)</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Most-used AI tool</h3>
+      <span class="panel-note">Among active AI users</span>
+    </div>
+    <div class="chart-box"><canvas id="chart-top-tools"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Respondents by age group</h3>
+      <span class="panel-note">All 200 respondents</span>
+    </div>
+    <div class="chart-box"><canvas id="chart-age"></canvas></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h3>Where to go from here</h3>
+  </div>
+  <div class="grid-3">
+    <a href="{{ url_for('explore') }}" style="text-decoration:none;">
+      <div class="tag-list" style="margin-top:0;"></div>
+      <h4 style="margin-bottom:0.3rem;">Data Exploration →</h4>
+      <p style="font-size:0.86rem;">Who uses AI, which tools they choose, and how that breaks down by age, occupation, and residence.</p>
+    </a>
+    <a href="{{ url_for('statistics') }}" style="text-decoration:none;">
+      <h4 style="margin-bottom:0.3rem;">Statistical Tests →</h4>
+      <p style="font-size:0.86rem;">Chi-square tests showing which demographic factors are genuinely associated with tool choice.</p>
+    </a>
+    <a href="{{ url_for('predict_page') }}" style="text-decoration:none;">
+      <h4 style="margin-bottom:0.3rem;">Try the Predictor →</h4>
+      <p style="font-size:0.86rem;">Enter a hypothetical respondent's profile and see which tool the trained model predicts.</p>
+    </a>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadOverview() {
+  const res = await fetch('/api/overview');
+  const d = await res.json();
+  const cells = document.querySelectorAll('#stat-strip .stat-cell');
+
+  cells[0].innerHTML = `<div class="value">${d.total_respondents}</div><div class="label">Respondents</div>`;
+  cells[1].innerHTML = `<div class="value accent-human">${d.ai_user_pct}%</div><div class="label">Use AI tools (${d.ai_users} of ${d.total_respondents})</div>`;
+  cells[2].innerHTML = `<div class="value accent-ai">${d.top_tool}</div><div class="label">Most preferred tool</div>`;
+  cells[3].innerHTML = `<div class="value">${d.cv_macro_f1}</div><div class="label">${d.best_model} (CV macro-F1)</div>`;
+}
+
+async function loadCharts() {
+  const pal = chartPalette();
+
+  const usage = await (await fetch('/api/tool-usage')).json();
+  new Chart(document.getElementById('chart-top-tools'), {
+    type: 'doughnut',
+    data: {
+      labels: usage.most_used_tool.labels,
+      datasets: [{ data: usage.most_used_tool.values, backgroundColor: pal.series, borderColor: pal.surface, borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { color: pal.text, boxWidth: 10, padding: 14 } } }
+    }
+  });
+
+  const demo = await (await fetch('/api/demographics')).json();
+  new Chart(document.getElementById('chart-age'), {
+    type: 'bar',
+    data: {
+      labels: demo.age.labels,
+      datasets: [{ data: demo.age.values, backgroundColor: pal.ai, borderRadius: 4, maxBarThickness: 46 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: pal.text }, grid: { display: false } },
+        y: { ticks: { color: pal.text }, grid: { color: pal.grid }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+loadOverview();
+loadCharts();
+</script>
+{% endblock %}

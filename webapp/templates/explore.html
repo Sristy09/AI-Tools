@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Data Exploration{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Section 03</div>
+  <h1>Data Exploration</h1>
+  <p>Who uses AI, which tools they reach for, and how usage patterns break down across age, occupation, and residence type.</p>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-head"><h3>Do respondents use AI tools?</h3></div>
+    <div class="chart-box short"><canvas id="chart-uses-ai"></canvas></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h3>Gender breakdown</h3></div>
+    <div class="chart-box short"><canvas id="chart-gender"></canvas></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h3>Most-used tool by age group</h3>
+    <span class="panel-note">Top 4 tools shown</span>
+  </div>
+  <div class="chart-box tall"><canvas id="chart-age-tool"></canvas></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h3>Most-used tool by occupation</h3>
+    <span class="panel-note">Top 4 tools, sorted by respondent count</span>
+  </div>
+  <div class="chart-box tall"><canvas id="chart-occ-tool"></canvas></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-head"><h3>Residence type vs tool</h3></div>
+    <div class="chart-box"><canvas id="chart-res-tool"></canvas></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h3>Usage frequency</h3></div>
+    <div class="chart-box"><canvas id="chart-freq"></canvas></div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-head"><h3>Top usage purposes</h3></div>
+    <div class="chart-box tall"><canvas id="chart-purpose"></canvas></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h3>Satisfaction with most-used tool</h3></div>
+    <div class="chart-box tall"><canvas id="chart-satisfaction"></canvas></div>
+  </div>
+</div>
+
+<div class="footnote">Sample: 200 respondents, 195 active AI users. Chart data drawn from <code>AI_Tool_Survey_Cleaned.csv</code>.</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const pal = chartPalette();
+Chart.defaults.color = pal.text;
+
+function stackedBar(ctx, labels, series, palette) {
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: series.map((s, i) => ({
+        label: s.name, data: s.values, backgroundColor: palette.series[i % palette.series.length],
+        borderRadius: 3, maxBarThickness: 36,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12 } } },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, grid: { color: palette.grid }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function horizontalBar(ctx, labels, values, color) {
+  return new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: color, borderRadius: 3 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: pal.grid }, beginAtZero: true }, y: { grid: { display: false } } }
+    }
+  });
+}
+
+(async function () {
+  const demo = await (await fetch('/api/demographics')).json();
+  const usage = await (await fetch('/api/tool-usage')).json();
+
+  new Chart(document.getElementById('chart-uses-ai'), {
+    type: 'doughnut',
+    data: { labels: demo.uses_ai.labels, datasets: [{ data: demo.uses_ai.values, backgroundColor: [pal.ai, pal.human], borderColor: pal.surface, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(document.getElementById('chart-gender'), {
+    type: 'doughnut',
+    data: { labels: demo.gender.labels, datasets: [{ data: demo.gender.values, backgroundColor: [pal.human, pal.ai], borderColor: pal.surface, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(document.getElementById('chart-freq'), {
+    type: 'bar',
+    data: { labels: usage.usage_frequency.labels, datasets: [{ data: usage.usage_frequency.values, backgroundColor: pal.ai, borderRadius: 4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 30, minRotation: 30 } }, y: { grid: { color: pal.grid }, beginAtZero: true } }
+    }
+  });
+
+  horizontalBar(document.getElementById('chart-purpose'), usage.usage_purpose.labels, usage.usage_purpose.values, pal.human);
+
+  const satOrder = ['Very Dissatisfied', 'Dissatisfied', 'Neutral', 'Satisfied', 'Very Satisfied'];
+  new Chart(document.getElementById('chart-satisfaction'), {
+    type: 'bar',
+    data: { labels: usage.satisfaction.labels, datasets: [{ data: usage.satisfaction.values, backgroundColor: pal.success, borderRadius: 4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false } }, y: { grid: { color: pal.grid }, beginAtZero: true } }
+    }
+  });
+
+  const ageTool = await (await fetch('/api/cross-tab/age')).json();
+  stackedBar(document.getElementById('chart-age-tool'), ageTool.labels, ageTool.series, pal);
+
+  const occTool = await (await fetch('/api/cross-tab/occupation')).json();
+  stackedBar(document.getElementById('chart-occ-tool'), occTool.labels, occTool.series, pal);
+
+  const resTool = await (await fetch('/api/cross-tab/residence')).json();
+  stackedBar(document.getElementById('chart-res-tool'), resTool.labels, resTool.series, pal);
+})();
+</script>
+{% endblock %}

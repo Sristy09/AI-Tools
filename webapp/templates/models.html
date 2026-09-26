@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Model Comparison{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Section 07</div>
+  <h1>Model Comparison</h1>
+  <p>Four classifiers, each tuned with Optuna, predicting a respondent's most-used AI tool from their demographics and usage pattern. Scored two ways: a single held-out test (small, noisy at this sample size) and 5-fold cross-validation across all 186 labeled rows — the more reliable number.</p>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h3>Macro-F1 by model</h3>
+    <span class="panel-note" id="best-model-note">Loading…</span>
+  </div>
+  <div class="chart-box tall"><canvas id="chart-model-f1"></canvas></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>Full comparison table</h3></div>
+  <table class="data-table" id="model-table">
+    <thead>
+      <tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1 (macro)</th></tr>
+    </thead>
+    <tbody id="model-body">
+      <tr><td colspan="5" class="skeleton" style="height:1.2rem;">&nbsp;</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>What predicts tool choice most?</h3><span class="panel-note">Feature importance, winning model</span></div>
+  <div class="chart-box tall"><canvas id="chart-importance"></canvas></div>
+</div>
+
+<div class="callout">
+  <p><strong>Why macro-F1, not accuracy:</strong> ChatGPT makes up over half the sample, so a model that always guessed "ChatGPT" would score well on raw accuracy while ignoring Claude and Gemini entirely. Macro-F1 weighs all three classes equally, which is why the winning model is chosen by that score rather than accuracy alone.</p>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function () {
+  const pal = chartPalette();
+  const data = await (await fetch('/api/model-results')).json();
+
+  document.getElementById('best-model-note').textContent =
+    `Best: ${data.best_model} — CV macro-F1 ${data.best_cv_f1}`;
+
+  const cvResults = data.results.filter(r => r.label.includes('5-fold CV'));
+  new Chart(document.getElementById('chart-model-f1'), {
+    type: 'bar',
+    data: {
+      labels: cvResults.map(r => r.label.split(' [')[0]),
+      datasets: [{ data: cvResults.map(r => r.f1), backgroundColor: pal.ai, borderRadius: 4, maxBarThickness: 60 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `Macro-F1: ${c.raw}` } } },
+      scales: { x: { grid: { display: false } }, y: { grid: { color: pal.grid }, beginAtZero: true, max: 0.6 } }
+    }
+  });
+
+  const tbody = document.getElementById('model-body');
+  tbody.innerHTML = data.results.map(r => `
+    <tr>
+      <td>${r.label}</td>
+      <td>${r.accuracy}</td>
+      <td>${r.precision}</td>
+      <td>${r.recall}</td>
+      <td><strong>${r.f1}</strong></td>
+    </tr>
+  `).join('');
+
+  const imp = await (await fetch('/api/feature-importance')).json();
+  new Chart(document.getElementById('chart-importance'), {
+    type: 'bar',
+    data: { labels: imp.labels, datasets: [{ data: imp.values, backgroundColor: pal.human, borderRadius: 3 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { color: pal.grid } }, y: { grid: { display: false } } }
+    }
+  });
+})();
+</script>
+{% endblock %}

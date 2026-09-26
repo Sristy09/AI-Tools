@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Interpretation{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Section 09</div>
+  <h1>Interpretation</h1>
+  <p>Pulling together the statistical tests, feature importances, and model results into a written answer to the project's core questions.</p>
+</div>
+
+<div class="panel">
+  <h3>1. Which factors influence tool preference?</h3>
+  <p>Of six chi-square tests, only <strong>Occupation vs. Most-Used Tool</strong> came back significant (&chi;&sup2; = 122.81, p = 0.015). Age, gender, residence, and stated usage purpose showed no confirmed association with tool choice at this sample size. Age vs. usage (p = 0.056) and Residence vs. tool (p = 0.074) sit just above the threshold — worth re-testing as the sample grows rather than ruled out.</p>
+  <div class="callout"><p><strong>Caveat:</strong> Occupation has 14 categories crossed against 8 tools, and several occupation groups have only 1–4 respondents. The chi-square result is real but should be read as suggestive rather than definitive until those groups grow.</p></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>2. Which variables matter most for prediction?</h3></div>
+  <p>The four <strong>engineered</strong> features — Num_Usage_Purposes, Num_Tools_Known, Num_Usage_Contexts, and Num_Concerns — occupy the top 4 spots in feature importance, together accounting for roughly 53% of the top-12 total. No single Occupation category makes the top 12, despite Occupation being the only significant chi-square result.</p>
+  <p><strong>Takeaway:</strong> how someone uses AI (breadth of purposes, tools known, concerns) predicts their tool choice far better than who they are demographically. Occupation matters in aggregate, but no individual occupation group is large enough to carry much weight on its own.</p>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>3. How does preference differ across groups?</h3></div>
+  <div class="grid-2">
+    <div>
+      <h4>By age</h4>
+      <p style="font-size:0.9rem;">13–17 leans heavily ChatGPT (67%); Claude nearly absent (8%). In 18–24 (the largest group), Claude's share nearly triples to 35% — the closest race of any age bracket. 25–34 reverts to strong ChatGPT dominance (70%). The pattern isn't linear with age — it's specifically the 18–24 bracket where Claude closes the gap.</p>
+    </div>
+    <div>
+      <h4>By occupation</h4>
+      <p style="font-size:0.9rem;">IT professionals stand out: 37.5% chose Claude, versus ~30% among students and ~17% among private-sector employees. Gemini is nearly absent among IT professionals (4%). Teachers and private-sector employees skew toward ChatGPT (60–67%).</p>
+    </div>
+    <div>
+      <h4>By residence</h4>
+      <p style="font-size:0.9rem;">Claude's share rises with urbanization: 24% Rural → 16% Semi-Urban → 32% Urban. Gemini shows the opposite pattern, peaking in Semi-Urban (23%) versus 13% in Urban.</p>
+    </div>
+    <div>
+      <h4>By gender</h4>
+      <p style="font-size:0.9rem;">Male respondents show a higher relative share of Claude (34%) than female respondents (21%), with female respondents leaning more toward ChatGPT (63% vs. 48%). Descriptive trend only — not statistically confirmed.</p>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>4. How reliable is the prediction?</h3></div>
+  <p>The honest performance estimate is the <strong>cross-validated macro-F1 of 0.388</strong> (Random Forest, 5-fold CV across all 186 labeled rows) — not the small 47-row holdout numbers, which are too noisy to trust for model selection.</p>
+  <p>XGBoost scored higher on raw accuracy (0.473 vs. 0.425), but Random Forest was correctly chosen by macro-F1 (0.388 vs. 0.362) instead, since accuracy rewards a model for favoring the majority class (ChatGPT, 102 of 186). The model is precise when predicting ChatGPT (66%) but only catches 39% of actual ChatGPT users; Gemini remains the weakest class (F1 = 0.23), unsurprising given it has the fewest examples (28).</p>
+  <div class="callout">
+    <p><strong>Bottom line:</strong> at ~186 usable rows across 3 unevenly-sized classes, a macro-F1 of ~0.39 (vs. a 0.33 random-guess baseline) shows real signal — but it's far from strongly predictive. This is a legitimate, reportable limitation, and it directly motivates continuing data collection toward the original 250–500 response target, particularly more Claude and Gemini respondents.</p>
+  </div>
+</div>
+
+{% endblock %}

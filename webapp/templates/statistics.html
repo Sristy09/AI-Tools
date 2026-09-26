@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Statistical Analysis{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Section 04</div>
+  <h1>Statistical Analysis</h1>
+  <p>Chi-square tests of independence for the key categorical relationships in the data. A low p-value (&lt; 0.05) means the two variables are likely associated in this sample; a high p-value means we can't rule out that any apparent difference is just chance.</p>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h3>Test results</h3>
+    <span class="panel-note">6 tests, 1 significant</span>
+  </div>
+  <table class="data-table" id="stats-table">
+    <thead>
+      <tr><th>Test</th><th>Chi&sup2;</th><th>p-value</th><th>Result</th></tr>
+    </thead>
+    <tbody id="stats-body">
+      <tr><td colspan="4" class="skeleton" style="height:1.2rem;">&nbsp;</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>p-values at a glance</h3></div>
+  <div class="chart-box tall"><canvas id="chart-pvalues"></canvas></div>
+</div>
+
+<div class="callout">
+  <p><strong>Reading the result:</strong> Occupation is the only variable with a confirmed statistical association to tool choice (p = 0.015). Age vs. usage (p = 0.056) and Residence vs. tool (p = 0.074) sit just above the significance line — worth re-testing with a larger sample rather than dismissing. Note that Occupation has 14 categories and several very small groups, so this result should be read as suggestive rather than definitive.</p>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function () {
+  const pal = chartPalette();
+  const { tests } = await (await fetch('/api/statistics')).json();
+
+  const tbody = document.getElementById('stats-body');
+  tbody.innerHTML = tests.map(t => `
+    <tr>
+      <td>${t.Test.replaceAll('_', ' ')}</td>
+      <td>${t.Chi2}</td>
+      <td>${t.p_value}</td>
+      <td>
+        <span class="badge ${t['Significant (p<0.05)'] ? 'sig' : 'not-sig'}">
+          <span class="badge-dot"></span>
+          ${t['Significant (p<0.05)'] ? 'Significant' : 'Not significant'}
+        </span>
+      </td>
+    </tr>
+  `).join('');
+
+  new Chart(document.getElementById('chart-pvalues'), {
+    type: 'bar',
+    data: {
+      labels: tests.map(t => t.Test.replaceAll('_', ' ')),
+      datasets: [{
+        data: tests.map(t => t.p_value),
+        backgroundColor: tests.map(t => t['Significant (p<0.05)'] ? pal.success : pal.grid),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: pal.grid }, title: { display: true, text: 'p-value (lower = more significant)' } },
+        y: { grid: { display: false } }
+      }
+    },
+    plugins: [{
+      id: 'sigLine',
+      afterDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        const x = scales.x.getPixelForValue(0.05);
+        ctx.save();
+        ctx.strokeStyle = pal.danger;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }]
+  });
+})();
+</script>
+{% endblock %}

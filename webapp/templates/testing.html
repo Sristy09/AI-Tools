@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Testing{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="eyebrow">Section 10</div>
+  <h1>Testing &amp; Overfit Check</h1>
+  <p>An unbiased look at {{ model_name }} on data it has never seen. The model used elsewhere in this dashboard was refit on every labeled respondent for the best real-world predictions — this page instead retrains the same architecture on the training split only, then tests it against the held-out 25% to check how well it actually generalizes.</p>
+</div>
+
+{% if not available %}
+<div class="panel">
+  <p>Testing evaluation isn't available yet. This usually means <code>data/processed/ml_ready/</code> hasn't been generated — run notebooks 06 and 07 first, then restart this app.</p>
+</div>
+{% else %}
+
+<div class="stat-strip" id="testing-stats">
+  <div class="stat-cell"><div class="value skeleton" style="width:3rem;height:1.9rem;">&nbsp;</div><div class="label">Train accuracy</div></div>
+  <div class="stat-cell"><div class="value skeleton" style="width:3rem;height:1.9rem;">&nbsp;</div><div class="label">Test accuracy</div></div>
+  <div class="stat-cell"><div class="value skeleton" style="width:3rem;height:1.9rem;">&nbsp;</div><div class="label">Train macro-F1</div></div>
+  <div class="stat-cell"><div class="value skeleton" style="width:3rem;height:1.9rem;">&nbsp;</div><div class="label">Test macro-F1</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-head"><h3>Confusion matrix</h3><span class="panel-note" id="cm-note">Held-out test set</span></div>
+    <div id="confusion-matrix"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h3>Train vs test performance</h3></div>
+    <div class="chart-box"><canvas id="chart-train-test"></canvas></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>ROC curves (one-vs-rest)</h3><span class="panel-note">Per-class AUC in the legend</span></div>
+  <div class="chart-box tall"><canvas id="chart-roc"></canvas></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>Classification report</h3></div>
+  <table class="data-table" id="report-table">
+    <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1-score</th><th>Support</th></tr></thead>
+    <tbody id="report-body"><tr><td colspan="5" class="skeleton" style="height:1.2rem;">&nbsp;</td></tr></tbody>
+  </table>
+</div>
+
+<div class="callout" id="overfit-callout" style="display:none;"></div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if available %}
+<script>
+(async function () {
+  const pal = chartPalette();
+  const d = await (await fetch('/api/testing')).json();
+  if (!d.available) return;
+
+  const cells = document.querySelectorAll('#testing-stats .stat-cell');
+  cells[0].innerHTML = `<div class="value">${(d.train_accuracy*100).toFixed(0)}%</div><div class="label">Train accuracy (n=${d.n_train})</div>`;
+  cells[1].innerHTML = `<div class="value accent-human">${(d.test_accuracy*100).toFixed(0)}%</div><div class="label">Test accuracy (n=${d.n_test}, unseen)</div>`;
+  cells[2].innerHTML = `<div class="value">${d.train_f1}</div><div class="label">Train macro-F1</div>`;
+  cells[3].innerHTML = `<div class="value accent-ai">${d.test_f1}</div><div class="label">Test macro-F1</div>`;
+
+  // Confusion matrix as a styled HTML heatmap table (no extra chart plugin needed)
+  const labels = d.labels;
+  const cm = d.confusion_matrix;
+  const maxVal = Math.max(...cm.flat());
+  let html = '<table class="data-table"><thead><tr><th></th>' +
+    labels.map(l => `<th>Pred: ${l}</th>`).join('') + '</tr></thead><tbody>';
+  cm.forEach((row, i) => {
+    html += `<tr><th>Actual: ${labels[i]}</th>` + row.map(v => {
+      const intensity = maxVal ? v / maxVal : 0;
+      const bg = `rgba(76, 88, 166, ${0.08 + intensity * 0.55})`;
+      const isDiag = false;
+      return `<td style="background:${bg};font-weight:600;text-align:center;">${v}</td>`;
+    }).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('confusion-matrix').innerHTML = html;
+
+  // Train vs test bar chart
+  new Chart(document.getElementById('chart-train-test'), {
+    type: 'bar',
+    data: {
+      labels: ['Accuracy', 'Macro-F1'],
+      datasets: [
+        { label: 'Train', data: [d.train_accuracy, d.train_f1], backgroundColor: pal.ai, borderRadius: 4 },
+        { label: 'Test', data: [d.test_accuracy, d.test_f1], backgroundColor: pal.human, borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true, max: 1, grid: { color: pal.grid } }, x: { grid: { display: false } } }
+    }
+  });
+
+  // ROC curves
+  const rocColors = [pal.ai, pal.human, pal.success, pal.danger];
+  new Chart(document.getElementById('chart-roc'), {
+    type: 'line',
+    data: {
+      datasets: d.roc.map((r, i) => ({
+        label: `${r.tool} (AUC ${r.auc})`,
+        data: r.fpr.map((x, j) => ({ x, y: r.tpr[j] })),
+        borderColor: rocColors[i % rocColors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.15,
+      })).concat([{
+        label: 'Random guess',
+        data: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+        borderColor: pal.grid,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        borderWidth: 1.5,
+      }])
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: { type: 'linear', min: 0, max: 1, title: { display: true, text: 'False Positive Rate' }, grid: { color: pal.grid } },
+        y: { min: 0, max: 1, title: { display: true, text: 'True Positive Rate' }, grid: { color: pal.grid } },
+      }
+    }
+  });
+
+  // Classification report table
+  const tbody = document.getElementById('report-body');
+  const rows = Object.entries(d.classification_report).filter(([k]) => labels.includes(k));
+  tbody.innerHTML = rows.map(([cls, m]) => `
+    <tr><td>${cls}</td><td>${m.precision.toFixed(2)}</td><td>${m.recall.toFixed(2)}</td><td>${m['f1-score'].toFixed(2)}</td><td>${m.support}</td></tr>
+  `).join('');
+
+  // Overfitting callout, generated from the actual gap
+  const gap = (d.train_f1 - d.test_f1).toFixed(2);
+  const callout = document.getElementById('overfit-callout');
+  callout.style.display = 'block';
+  callout.innerHTML = `<p><strong>Train-test gap:</strong> macro-F1 drops from ${d.train_f1} on training data to ${d.test_f1} on unseen data (a gap of ${gap}). A gap this size at ~${d.n_train} training rows is expected — the model has genuinely learned patterns in the training set that don't fully transfer, which is a sample-size limitation rather than a modeling mistake. More respondents, especially for the smaller tool classes, is the most effective way to close this gap.</p>`;
+})();
+</script>
+{% endif %}
+{% endblock %}
